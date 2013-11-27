@@ -39,7 +39,8 @@ draw_frame({XG,YG}, {XB,YB}, X1, X2) ->
     io:format("%p", [Str_Frame]).
 
 pong_str({XG,YG}, {XB,YB}, X1, X2) ->
-    V_line = string:chars($_,XG,"~n"),
+    V_line_temp = string:chars($_,XG," ~n"),
+    V_line = string:chars($ ,1,V_line_temp),
     H_line = pong_str_aux({XG,YG}, {XB,YB}, X1, X2, YG, ""),
     Temp = string:concat(V_line, H_line),
     string:concat(Temp,V_line).
@@ -65,9 +66,34 @@ pong_str_aux({XG,YG}, Ball, X1, X2, YC, Acc_Str) ->
     Temp_Str = line_str(XG, none, none),
     pong_str_aux({XG,YG}, Ball, X1, X2, YC-1, concat(Temp_Str,Acc_Str));
     
-%%TODO
+
+line_str(XG, none, none) ->
+    Temp = string:chars($ , XG,"|~n"),
+    string:chars($|, 1, Temp);
+line_str(XG, XB, none) ->
+    Temp1 = string:chars($ , XG-1-XB,"|~n"),
+    Temp2 = string:chars($O, 1, Temp1),
+    Temp3 = string:chars($ , XB, Temp2),
+    string:chars($|, 1, Temp3);
+line_str(XG, none, X) ->
+    Temp1 = string:chars($ , XG-1-(X+2),"|~n"),
+    Temp2 = string:chars($H, 5, Temp1),
+    Temp3 = string:chars($ , X-2, Temp2),
+    string:chars($|, 1, Temp3);
+line_str(XG, XB, X) when X > XB->
+    Temp1 = string:chars($ , XG-1-(X+2),"|~n"),
+    Temp2 = string:chars($H, 5, Temp1),
+    Temp3 = string:chars($ , X-2-XB+1, Temp2),
+    Temp4 = string:chars($O, 1, Temp3),
+    Temp5 = string:chars($ , XB, Temp4),
+    string:chars($|, 1, Temp5);
 line_str(XG, XB, X) ->
-    .
+    Temp1 = string:chars($ , XG-1-XB,"|~n"),
+    Temp2 = string:chars($O, 1, Temp1),
+    Temp3 = string:chars($ , XB-(X+2)-1, Temp2),
+    Temp4 = string:chars($H, 5, Temp3),
+    Temp5 = string:chars($ , XB, Temp4),
+    string:chars($|, 1, Temp5).
     
     
 
