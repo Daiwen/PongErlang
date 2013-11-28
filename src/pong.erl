@@ -2,38 +2,38 @@
 
 -export([start_client/1,start_server/0,stop_server/0]).
 
--export([]).
+-export([client_loop/1, init_server/1]).
 
-start_client(Server_Address) ->
-    contact_server(Server_Address),
-    Pid = spawn(?MODULE, client_loop, [Server_Address, unknown]),
+start_client(Server_Node) ->
+    contact_server(Server_Node),
+    Pid = spawn(?MODULE, client_loop, [Server_Node, unknown]),
     init_input_listener(Pid).
     
 
-%% TODO
-contact_server(Server_Address)->
-    .
+contact_server(Server_Node)->
+    {pong_server, Server_Node} ! {register_player, self()},
+    monitor_node(Server_Node, true).
 
 
-client_loop(Server_Address, Key) ->
+client_loop(Server_Node, Key) ->
     receive
-	request -> Server_Adress ! {self(), Key},
-		   client_loop(Server_Adress, unknown);
+	request            -> {pong_server, Server_Node} ! {self(), Key},
+			      client_loop(Server_Node, unknown);
 	{frame, {{Field_Size},
 		 Ball_Pos,
 		 My_Pos,
 		 Foe_Pos}} -> draw_frame(Field_Size,
-					      Ball_Pos,
-					      My_Pos,
-					      Foe_Pos),
-				   client_loop(Server_Address, Key);
-
-	{input, '\ESC'} -> ok;
-	{input, Key} -> client_loop(Server_Address, Key)
+					 Ball_Pos,
+					 My_Pos,
+					 Foe_Pos),
+			      client_loop(Server_Node, Key);
+	{nodedown, Node}   -> {error, nodedown}
+	{input, '\ESC'}    -> ok;
+	{input, Key}       -> client_loop(Server_Address, Key)
     end.
 
 
-%% TODO
+
 draw_frame({XG,YG}, {XB,YB}, X1, X2) ->
     Str_Frame = pong_str({XG,YG}, {XB,YB}, X1, X2),
     io:format("%p", [Str_Frame]).
@@ -106,7 +106,7 @@ start_server() ->
     register(serverpong, spawn(?MODULE, init_server, [cfg])).
 
 %%TODO    
-init_server(cfg)->
+init_server(cfgfile)->
     .
 
 stop_server() ->
