@@ -12,22 +12,28 @@ start_client(Server_Node) ->
 
 contact_server(Server_Node)->
     {pong_server, Server_Node} ! {register_player, self()},
-    monitor_node(Server_Node, true).
+    monitor_node(Server_Node, true),
+    receive
+	gamestart -> ok
+    after 
+	60000 ->
+	    exit(timeout)
+    end.
 
 
 client_loop(Server_Node, Key) ->
     receive
 	request            -> {pong_server, Server_Node} ! {self(), Key},
 			      client_loop(Server_Node, unknown);
-	{frame, {{Field_Size},
-		 Ball_Pos,
-		 My_Pos,
-		 Foe_Pos}} -> draw_frame(Field_Size,
+	{frame, {gamestate, Field_Size,
+		 {ball, Ball_Pos},
+		 {bot_player, My_Pos},
+		 {top_player, Foe_Pos}}} -> draw_frame(Field_Size,
 					 Ball_Pos,
 					 My_Pos,
 					 Foe_Pos),
 			      client_loop(Server_Node, Key);
-	{nodedown, Node}   -> {error, nodedown}
+	{nodedown, Node}   -> {error, nodedown};
 	{input, '\ESC'}    -> ok;
 	{input, Key}       -> client_loop(Server_Address, Key)
     end.
@@ -101,13 +107,66 @@ line_str(XG, XB, X) ->
 init_input_listener(Pid)->
     .
 
-start_server() ->
-    cfg = read_config(),
-    register(serverpong, spawn(?MODULE, init_server, [cfg])).
+start_server(Config_File) ->
+    register(serverpong, spawn(?MODULE, init_server, [Config_File])).
 
-%%TODO    
-init_server(cfgfile)->
+
+init_server(Config_File)->
+    GameState = read_config(Config_File),
+    {Pid1, Pid2} = wait_players(),
+    game_loop(GameState, Pid1, Pid2).
+
+
+
+read_config(Config_File) ->
+    {ok, File_Device} = file:open(Config_File, read),
+    {ok, [Gx, Gy]} = fread(File_Device, '', "%d %d"),
+    {gamestate,
+     {Gx, Gy},
+     {ball, {B1x, B2y}},
+     {bot_player, {P1x, P1y}},
+     {top_player, {P2x, P2y}}}.    
+
+
+wait_players() ->
+    Pid1 = player_connection(),
+    Pid2 = player_connection(),
+    Pid1 ! gamestart,
+    Pid2 ! gamestart,
+    {Pid1, Pid2}.
+
+
+player_connection() ->
+    receive
+	{register_player, Pid} -> Pid
+    after
+	60000 ->
+	    exit(timeout)
+    end.
+
+
+game_loop(GameState, Pid1, Pid2) ->
+    Pid1 ! request,
+    Pid2 ! request,
+    {Key1, Key2} = receive_inputs(none, none),
+    NGameState = update_GameState(GameState, Key1, Key2),
+    Pid1 ! {frame, NGameState},
+    Pid2 ! {frame, flip_GameState(NGameState)},
+    timer:sleep(500),
+    game_loop(NGameState, Pid1, Pid2).
+
+%%TODO
+receive_inputs(none, none) ->
     .
+
+%%TODO
+update_GameState(GameState, Key1, Key2) ->
+    .
+
+%%TODO
+flip_GameState(NGameState) ->
+    .
+
 
 stop_server() ->
     serverpong ! stop.
