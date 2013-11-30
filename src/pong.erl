@@ -26,7 +26,7 @@ client_loop(Server_Node, Key) ->
 	request            -> {pong_server, Server_Node} ! {self(), Key},
 			      client_loop(Server_Node, unknown);
 	{frame, {gamestate, Field_Size,
-		 {ball, Ball_Pos},
+		 {ball, Ball_Pos, _},
 		 {bot_player, My_Pos},
 		 {top_player, Foe_Pos}}} -> draw_frame(Field_Size,
 					 Ball_Pos,
@@ -117,13 +117,13 @@ init_server(Config_File)->
     game_loop(GameState, Pid1, Pid2).
 
 
-
+%TODO specify the variables
 read_config(Config_File) ->
     {ok, File_Device} = file:open(Config_File, read),
     {ok, [Gx, Gy]} = fread(File_Device, '', "%d %d"),
     {gamestate,
      {Gx, Gy},
-     {ball, {B1x, B2y}},
+     {ball, {Px, Py}, {Dx, Dy}},
      {bot_player, {P1x, P1y}},
      {top_player, {P2x, P2y}}}.    
 
@@ -155,17 +155,123 @@ game_loop(GameState, Pid1, Pid2) ->
     timer:sleep(500),
     game_loop(NGameState, Pid1, Pid2).
 
-%%TODO
-receive_inputs(none, none) ->
-    .
 
-%%TODO
-update_GameState(GameState, Key1, Key2) ->
-    .
+receive_inputs(Pid1, Pid2, none, none) ->
+    receive
+	{Pid1, Key1} -> receive_inputs(Pid1, Pid2, Key1, none);
+	{Pid2, left} -> receive_inputs(Pid1, Pid2, none, right)
+	{Pid2, right} -> receive_inputs(Pid1, Pid2, none, left)
+    after
+	1000 -> exit(timeout)
+    end;
+receive_inputs(_, Pid2, Key1, none) ->
+    receive
+	{Pid2, Key2} -> {Key1, Key2}
+    after
+	1000 -> exit(timeout)
+    end;
+receive_inputs(Pid1, _, none, Key2) ->
+    receive
+	{Pid1, Key1} -> {Key1, Key2}
+    after
+	1000 -> exit(timeout)
+    end.
 
-%%TODO
-flip_GameState(NGameState) ->
-    .
+
+update_GameState({gamestate, Field_Size,
+		 Ball,
+		 {bot_player, P1_Pos},
+		 {top_player, P2_Pos}}, Key1, Key2) ->
+    NP1_Pos = update_player(Field_Size, P1_Pos, Key1),
+    NP2_Pos = update_player(Field_Size, P2_Pos, Key2),
+    NBall   = update_ball(Field_Size, Ball, NP1_Pos, NP2_Pos),
+    {gamestate, Field_Size, NBall,
+     {bot_player, NP1_Pos},
+     {top_player, NP2_Pos}}.
+
+
+update_player({Gx, _}, {Px, Py}, left) when Px > 3->
+    {Px-1, Py};
+update_player({Gx, _}, {Px, Py}, right) when Px < (Gx - 4)->
+    {Px+1, Py};
+update_player(_, Pos, _) ->
+    Pos.
+
+
+
+
+update_ball({Gx, Gy},
+	    {ball, {PBx, PBy}, {DBx, DBy}},
+	    {PBx, PBy}, _)  ->
+    {ball, {PBx+DBx, PBy-DBy}, {DBx, -DBy}};
+update_ball({Gx, Gy},
+	    {ball, {PBx, PBy}, {DBx, DBy}},
+	    {P1x, PBy}, _) when (PBx >= P1x-2 or PBx < P1x) ->
+    case {PBx, DBx > -1}
+	{0, _ } ->
+	    {ball, {PBx-DBx, PBy-DBy}, {-DBx, -DBy}};
+	{_, false} ->
+	    {ball, {PBx+DBx, PBy-DBy}, {DBx, -DBy}};
+	{_, true} ->
+	    {ball, {PBx+DBx, PBy-DBy}, {DBx-1, -DBy}}
+    end;
+update_ball({Gx, Gy},
+	    {ball, {PBx, PBy}, {DBx, DBy}},
+	    {P1x, PBy}, _) when (PBx =< P1x+2 or PBx > P1x) ->
+    case {PBx, DBx < 1}
+	{Gx-1, _ } ->
+	    {ball, {PBx-DBx, PBy-DBy}, {-DBx, -DBy}};
+	{_, false} ->
+	    {ball, {PBx+DBx, PBy-DBy}, {DBx, -DBy}};
+	{_, true} ->
+	    {ball, {PBx+DBx, PBy-DBy}, {DBx+1, -DBy}}
+    end;
+update_ball({Gx, Gy},
+	    {ball, {PBx, PBy}, {DBx, DBy}},
+	    _, {PBx, PBy})  ->
+    {ball, {PBx+DBx, PBy-DBy}, {DBx, -DBy}};
+update_ball({Gx, Gy},
+	    {ball, {PBx, PBy}, {DBx, DBy}},
+	    _, {P2x, PBy}) when (PBx >= P2x-2 or PBx < P2x) ->
+    case {PBx, DBx > -1}
+	{0, _ } ->
+	    {ball, {PBx-DBx, PBy-DBy}, {-DBx, -DBy}};
+	{_, false} ->
+	    {ball, {PBx+DBx, PBy-DBy}, {DBx, -DBy}};
+	{_, true} ->
+	    {ball, {PBx+DBx, PBy-DBy}, {DBx-1, -DBy}}
+    end;
+update_ball({Gx, Gy},
+	    {ball, {PBx, PBy}, {DBx, DBy}},
+	    _, {P2x, PBy}) when (PBx =< P2x+2 or PBx > P2x) ->
+    case {PBx, DBx < 1}
+	{Gx-1, _ } ->
+	    {ball, {PBx-DBx, PBy-DBy}, {-DBx, -DBy}};
+	{_, false} ->
+	    {ball, {PBx+DBx, PBy-DBy}, {DBx, -DBy}};
+	{_, true} ->
+	    {ball, {PBx+DBx, PBy-DBy}, {DBx+1, -DBy}}
+    end;
+update_ball({Gx, Gy},
+	    {ball, {0, PBy}, {DBx, DBy}},
+	    _, _) ->
+    {ball, {PBx-DBx, PBy+DBy}, {-DBx, DBy}};
+update_ball({Gx, Gy},
+	    {ball, {PBx, PBy}, {DBx, DBy}},
+	    _, _) when PBx == Gx-1 ->
+    {ball, {PBx-DBx, PBy+DBy}, {-DBx, DBy}};
+update_ball(_, {ball, {PBx, PBy}, {DBx, DBy}}, _, _) ->
+        {ball, {PBx+DBx, PBy+DBy}, {DBx, DBy}}.
+
+
+flip_GameState({gamestate, {Gx, Gy},
+		{ball, {Px, Py}, {Dx, Dy}},
+		{bot_player, {P1x, P1y}},
+		{top_player, {P2x, P2y}}}) ->
+    {gamestate, {Gx, Gy},
+		{ball, {Gx-Px, Gy-Py}, {-Dx,-Dy}},
+		{bot_player, {Gx-P1x, Gy-P1y}},
+		{top_player, {Gx-P2x, Gy-P2y}}}.
 
 
 stop_server() ->
