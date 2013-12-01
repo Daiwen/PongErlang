@@ -1,8 +1,8 @@
 -module(pong).
 
--export([start_client/1,start_server/0,stop_server/0]).
+-export([start_client/1,start_server/1,stop_server/0]).
 
--export([client_loop/1, init_server/1, input_listener/1]).
+-export([client_loop/2, init_server/1, input_listener/1]).
 
 -include_lib("../dep/cecho/include/cecho.hrl").
 
@@ -35,16 +35,16 @@ client_loop(Server_Node, Key) ->
 					 My_Pos,
 					 Foe_Pos),
 			      client_loop(Server_Node, Key);
-	{nodedown, Node}   -> {error, nodedown};
+	{nodedown, _}   -> {error, nodedown};
 	{input, quit}    -> ok;
-	{input, Key}       -> client_loop(Server_Address, Key)
+	{input, Key}       -> client_loop(Server_Node, Key)
     end.
 
 
 
 draw_frame({XG,YG}, {XB,YB}, X1, X2) ->
     Str_Frame = pong_str({XG,YG}, {XB,YB}, X1, X2),
-    io:format("%p", [Str_Frame]).
+    io:format("~p", [Str_Frame]).
 
 pong_str({XG,YG}, {XB,YB}, X1, X2) ->
     V_line_temp = string:chars($_,XG," ~n"),
@@ -57,22 +57,28 @@ pong_str_aux(_, _, _, _, 0, Acc_Str) ->
     Acc_Str;
 pong_str_aux({XG,YG}, {XB, 1}, X1, X2, 1, Acc_Str) ->
     Temp_Str = line_str(XG, XB, X2),
-    pong_str_aux({XG,YG}, {XB, 1}, X1, X2, 0, concat(Temp_Str,Acc_Str));
+    pong_str_aux({XG,YG}, {XB, 1}, X1, X2, 0,
+		 string:concat(Temp_Str,Acc_Str));
 pong_str_aux({XG,YG}, {XB, YG}, X1, X2, YG, Acc_Str) ->
     Temp_Str = line_str(XG, XB, X1),
-    pong_str_aux({XG,YG}, {XB, YG}, X1, X2, YG-1, concat(Temp_Str,Acc_Str));
+    pong_str_aux({XG,YG}, {XB, YG}, X1, X2, YG-1,
+		 string:concat(Temp_Str,Acc_Str));
 pong_str_aux({XG,YG}, Ball, X1, X2, YG, Acc_Str) ->
     Temp_Str = line_str(XG, none, X1),
-    pong_str_aux({XG,YG}, Ball, X1, X2, YG-1, concat(Temp_Str,Acc_Str));
+    pong_str_aux({XG,YG}, Ball, X1, X2, YG-1,
+		 string:concat(Temp_Str,Acc_Str));
 pong_str_aux({XG,YG}, Ball, X1, X2, 1, Acc_Str) ->
     Temp_Str = line_str(XG, none, X2),
-    pong_str_aux({XG,YG}, Ball, X1, X2, 0, concat(Temp_Str,Acc_Str));
+    pong_str_aux({XG,YG}, Ball, X1, X2, 0,
+		 string:concat(Temp_Str,Acc_Str));
 pong_str_aux({XG,YG}, {XB,YC}, X1, X2, YC, Acc_Str) ->
     Temp_Str = line_str(XG, XB, none),
-    pong_str_aux({XG,YG}, {XB,YC}, X1, X2, YC-1, concat(Temp_Str,Acc_Str));
+    pong_str_aux({XG,YG}, {XB,YC}, X1, X2, YC-1,
+		 string:concat(Temp_Str,Acc_Str));
 pong_str_aux({XG,YG}, Ball, X1, X2, YC, Acc_Str) ->
     Temp_Str = line_str(XG, none, none),
-    pong_str_aux({XG,YG}, Ball, X1, X2, YC-1, concat(Temp_Str,Acc_Str));
+    pong_str_aux({XG,YG}, Ball, X1, X2, YC-1,
+		 string:concat(Temp_Str,Acc_Str)).
     
 
 line_str(XG, none, none) ->
@@ -128,7 +134,7 @@ init_server(Config_File)->
 
 read_config(Config_File) ->
     {ok, File_Device} = file:open(Config_File, read),
-    {ok, [Gx, Gy]} = fread(File_Device, '', "%d %d"),
+    {ok, [Gx, Gy]} = io:fread(File_Device, '', "~d ~d"),
     {gamestate,
      {Gx, Gy},
      {ball, {Gx div 2, Gy div 2}, {0, 1}},
@@ -156,7 +162,7 @@ player_connection() ->
 game_loop(GameState, Pid1, Pid2) ->
     Pid1 ! request,
     Pid2 ! request,
-    {Key1, Key2} = receive_inputs(none, none),
+    {Key1, Key2} = receive_inputs(Pid1, Pid2, none, none),
     NGameState = update_GameState(GameState, Key1, Key2),
     Pid1 ! {frame, NGameState},
     Pid2 ! {frame, flip_GameState(NGameState)},
@@ -167,7 +173,7 @@ game_loop(GameState, Pid1, Pid2) ->
 receive_inputs(Pid1, Pid2, none, none) ->
     receive
 	{Pid1, Key1} -> receive_inputs(Pid1, Pid2, Key1, none);
-	{Pid2, left} -> receive_inputs(Pid1, Pid2, none, right)
+	{Pid2, left} -> receive_inputs(Pid1, Pid2, none, right);
 	{Pid2, right} -> receive_inputs(Pid1, Pid2, none, left)
     after
 	1000 -> exit(timeout)
@@ -198,7 +204,7 @@ update_GameState({gamestate, Field_Size,
      {top_player, NP2_Pos}}.
 
 
-update_player({Gx, _}, {Px, Py}, left) when Px > 3->
+update_player({_, _}, {Px, Py}, left) when Px > 3->
     {Px-1, Py};
 update_player({Gx, _}, {Px, Py}, right) when Px < (Gx - 4)->
     {Px+1, Py};
@@ -208,14 +214,14 @@ update_player(_, Pos, _) ->
 
 
 
-update_ball({Gx, Gy},
+update_ball(_,
 	    {ball, {PBx, PBy}, {DBx, DBy}},
 	    {PBx, PBy}, _)  ->
     {ball, {PBx+DBx, PBy-DBy}, {DBx, -DBy}};
-update_ball({Gx, Gy},
+update_ball(_,
 	    {ball, {PBx, PBy}, {DBx, DBy}},
-	    {P1x, PBy}, _) when (PBx >= P1x-2 or PBx < P1x) ->
-    case {PBx, DBx > -1}
+	    {P1x, PBy}, _) when PBx >= P1x-2; PBx < P1x ->
+    case {PBx, DBx > -1} of
 	{0, _ } ->
 	    {ball, {PBx-DBx, PBy-DBy}, {-DBx, -DBy}};
 	{_, false} ->
@@ -223,25 +229,26 @@ update_ball({Gx, Gy},
 	{_, true} ->
 	    {ball, {PBx+DBx, PBy-DBy}, {DBx-1, -DBy}}
     end;
-update_ball({Gx, Gy},
+update_ball({Gx, _},
 	    {ball, {PBx, PBy}, {DBx, DBy}},
-	    {P1x, PBy}, _) when (PBx =< P1x+2 or PBx > P1x) ->
-    case {PBx, DBx < 1}
-	{Gx-1, _ } ->
+	    {P1x, PBy}, _) when PBx =< P1x+2; PBx > P1x ->
+    Max_x = Gx-1,
+    case {PBx, DBx < 1} of
+	{Max_x, _ } ->
 	    {ball, {PBx-DBx, PBy-DBy}, {-DBx, -DBy}};
 	{_, false} ->
 	    {ball, {PBx+DBx, PBy-DBy}, {DBx, -DBy}};
 	{_, true} ->
 	    {ball, {PBx+DBx, PBy-DBy}, {DBx+1, -DBy}}
     end;
-update_ball({Gx, Gy},
+update_ball(_,
 	    {ball, {PBx, PBy}, {DBx, DBy}},
 	    _, {PBx, PBy})  ->
     {ball, {PBx+DBx, PBy-DBy}, {DBx, -DBy}};
-update_ball({Gx, Gy},
+update_ball( _,
 	    {ball, {PBx, PBy}, {DBx, DBy}},
-	    _, {P2x, PBy}) when (PBx >= P2x-2 or PBx < P2x) ->
-    case {PBx, DBx > -1}
+	    _, {P2x, PBy}) when PBx >= P2x-2; PBx < P2x ->
+    case {PBx, DBx > -1} of
 	{0, _ } ->
 	    {ball, {PBx-DBx, PBy-DBy}, {-DBx, -DBy}};
 	{_, false} ->
@@ -249,22 +256,23 @@ update_ball({Gx, Gy},
 	{_, true} ->
 	    {ball, {PBx+DBx, PBy-DBy}, {DBx-1, -DBy}}
     end;
-update_ball({Gx, Gy},
+update_ball({Gx, _},
 	    {ball, {PBx, PBy}, {DBx, DBy}},
-	    _, {P2x, PBy}) when (PBx =< P2x+2 or PBx > P2x) ->
-    case {PBx, DBx < 1}
-	{Gx-1, _ } ->
+	    _, {P2x, PBy}) when PBx =< P2x+2; PBx > P2x ->
+    Max_x = Gx-1,
+    case {PBx, DBx < 1} of
+	{Max_x, _ } ->
 	    {ball, {PBx-DBx, PBy-DBy}, {-DBx, -DBy}};
 	{_, false} ->
 	    {ball, {PBx+DBx, PBy-DBy}, {DBx, -DBy}};
 	{_, true} ->
 	    {ball, {PBx+DBx, PBy-DBy}, {DBx+1, -DBy}}
     end;
-update_ball({Gx, Gy},
+update_ball(_,
 	    {ball, {0, PBy}, {DBx, DBy}},
 	    _, _) ->
-    {ball, {PBx-DBx, PBy+DBy}, {-DBx, DBy}};
-update_ball({Gx, Gy},
+    {ball, {-DBx, PBy+DBy}, {-DBx, DBy}};
+update_ball({Gx, _},
 	    {ball, {PBx, PBy}, {DBx, DBy}},
 	    _, _) when PBx == Gx-1 ->
     {ball, {PBx-DBx, PBy+DBy}, {-DBx, DBy}};
