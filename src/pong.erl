@@ -2,12 +2,14 @@
 
 -export([start_client/1,start_server/0,stop_server/0]).
 
--export([client_loop/1, init_server/1]).
+-export([client_loop/1, init_server/1, input_listener/1]).
+
+-include_lib("../dep/cecho/include/cecho.hrl").
 
 start_client(Server_Node) ->
     contact_server(Server_Node),
     Pid = spawn(?MODULE, client_loop, [Server_Node, unknown]),
-    init_input_listener(Pid).
+    spawn(?MODULE, input_listener, [Pid]).
     
 
 contact_server(Server_Node)->
@@ -34,7 +36,7 @@ client_loop(Server_Node, Key) ->
 					 Foe_Pos),
 			      client_loop(Server_Node, Key);
 	{nodedown, Node}   -> {error, nodedown};
-	{input, '\ESC'}    -> ok;
+	{input, quit}    -> ok;
 	{input, Key}       -> client_loop(Server_Address, Key)
     end.
 
@@ -103,9 +105,15 @@ line_str(XG, XB, X) ->
     
     
 
-%% TODO
-init_input_listener(Pid)->
-    .
+input_listener(Pid)->
+    C = cecho:getch(),
+    case C of
+	$q -> Pid ! {input, left},
+	      input_listener(Pid);
+	$d -> Pid ! {input, right},
+	      input_listener(Pid);
+	$p -> Pid ! {input, quit}
+    end.
 
 start_server(Config_File) ->
     register(serverpong, spawn(?MODULE, init_server, [Config_File])).
@@ -117,15 +125,15 @@ init_server(Config_File)->
     game_loop(GameState, Pid1, Pid2).
 
 
-%TODO specify the variables
+
 read_config(Config_File) ->
     {ok, File_Device} = file:open(Config_File, read),
     {ok, [Gx, Gy]} = fread(File_Device, '', "%d %d"),
     {gamestate,
      {Gx, Gy},
-     {ball, {Px, Py}, {Dx, Dy}},
-     {bot_player, {P1x, P1y}},
-     {top_player, {P2x, P2y}}}.    
+     {ball, {Gx div 2, Gy div 2}, {0, 1}},
+     {bot_player, {Gx div 2, Gy-1}},
+     {top_player, {Gx div 2, 0}}}.    
 
 
 wait_players() ->
