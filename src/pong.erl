@@ -121,7 +121,7 @@ input_listener(Pid)->
 	$d -> Pid ! {input, right},
 	      input_listener(Pid);
 	$p -> Pid ! {input, quit};
-	_  -> input_listener(Pid);
+	_  -> input_listener(Pid)
     end.
 
 start_server(Config_File) ->
