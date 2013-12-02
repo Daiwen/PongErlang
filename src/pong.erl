@@ -118,7 +118,13 @@ input_listener(Pid)->
 	      input_listener(Pid);
 	$d -> Pid ! {input, right},
 	      input_listener(Pid);
+<<<<<<< Updated upstream
 	$p -> Pid ! {input, quit}
+=======
+	$p -> Pid ! {input, quit},
+	      application:stop(cecho);
+	_  -> input_listener(Pid)
+>>>>>>> Stashed changes
     end.
 
 start_server(Config_File) ->
@@ -152,7 +158,12 @@ wait_players() ->
 
 player_connection() ->
     receive
+<<<<<<< Updated upstream
 	{register_player, Pid} -> Pid
+=======
+	{register_player, Pid} ->  io:format("Received a registration request~n"),
+				   Pid
+>>>>>>> Stashed changes
     after
 	60000 ->
 	    exit(timeout)
