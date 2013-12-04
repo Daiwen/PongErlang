@@ -9,10 +9,12 @@
 start_client(Server_Node) ->
     contact_server(Server_Node),
     Pid = spawn(?MODULE, client_loop, [Server_Node, unknown]),
-    spawn(?MODULE, input_listener, [Pid]).
+    application:start(cecho),
+    input_listener(Pid).
     
 
 contact_server(Server_Node)->
+    io:format("Sending a registration request~n"),
     {pong_server, Server_Node} ! {register_player, self()},
     monitor_node(Server_Node, true),
     receive
@@ -118,22 +120,20 @@ input_listener(Pid)->
 	      input_listener(Pid);
 	$d -> Pid ! {input, right},
 	      input_listener(Pid);
-<<<<<<< Updated upstream
-	$p -> Pid ! {input, quit}
-=======
 	$p -> Pid ! {input, quit},
 	      application:stop(cecho);
 	_  -> input_listener(Pid)
->>>>>>> Stashed changes
     end.
 
 start_server(Config_File) ->
-    register(serverpong, spawn(?MODULE, init_server, [Config_File])).
+    register(pong_server, spawn(?MODULE, init_server, [Config_File])).
 
 
 init_server(Config_File)->
     GameState = read_config(Config_File),
     {Pid1, Pid2} = wait_players(),
+    Pid1 ! {frame, GameState},
+    Pid2 ! {frame, flip_GameState(GameState)},
     game_loop(GameState, Pid1, Pid2).
 
 
@@ -158,12 +158,8 @@ wait_players() ->
 
 player_connection() ->
     receive
-<<<<<<< Updated upstream
-	{register_player, Pid} -> Pid
-=======
 	{register_player, Pid} ->  io:format("Received a registration request~n"),
 				   Pid
->>>>>>> Stashed changes
     after
 	60000 ->
 	    exit(timeout)
