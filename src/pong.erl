@@ -2,19 +2,20 @@
 
 -export([start_client/1,start_server/1,stop_server/0]).
 
--export([client_loop/2, init_server/1, input_listener/1]).
+-export([client_loop/2, init_server/1, init_listener/1]).
 
 -include_lib("../dep/cecho/include/cecho.hrl").
 
 start_client(Server_Node) ->
     contact_server(Server_Node),
-    Pid = spawn(?MODULE, client_loop, [Server_Node, unknown]),
-    application:start(cecho),
-    input_listener(Pid).
+    %% Pid = spawn(?MODULE, client_loop, [Server_Node, unknown]),
+    %% application:start(cecho),
+    %% input_listener(Pid).
+    spawn(?MODULE, init_listener, [self()]),
+    client_loop(Server_Node, unknown).
     
 
 contact_server(Server_Node)->
-    io:format("Sending a registration request~n"),
     {pong_server, Server_Node} ! {register_player, self()},
     monitor_node(Server_Node, true),
     receive
@@ -27,26 +28,26 @@ contact_server(Server_Node)->
 
 client_loop(Server_Node, Key) ->
     receive
-	request            -> {pong_server, Server_Node} ! {self(), Key},
+	request          -> {pong_server, Server_Node} ! {self(), Key},
 			      client_loop(Server_Node, unknown);
 	{frame, {gamestate, Field_Size,
 		 {ball, Ball_Pos, _},
-		 {bot_player, My_Pos},
-		 {top_player, Foe_Pos}}} -> draw_frame(Field_Size,
-					 Ball_Pos,
-					 My_Pos,
-					 Foe_Pos),
-			      client_loop(Server_Node, Key);
+		 {bot_player, {My_Pos, _}},
+		 {top_player, {Foe_Pos, _}}}} -> draw_frame(Field_Size,
+						       Ball_Pos,
+						       My_Pos,
+						       Foe_Pos),
+					    client_loop(Server_Node, Key);
 	{nodedown, _}   -> {error, nodedown};
-	{input, quit}    -> ok;
-	{input, Key}       -> client_loop(Server_Node, Key)
+	{input, quit}   -> ok;
+	{input, Key}    -> client_loop(Server_Node, Key)
     end.
 
 
 
 draw_frame({XG,YG}, {XB,YB}, X1, X2) ->
     Str_Frame = pong_str({XG,YG}, {XB,YB}, X1, X2),
-    io:format("~p", [Str_Frame]).
+    io:format(Str_Frame).
 
 pong_str({XG,YG}, {XB,YB}, X1, X2) ->
     V_line_temp = string:chars($_,XG," ~n"),
@@ -111,10 +112,13 @@ line_str(XG, XB, X) ->
     Temp5 = string:chars($ , XB, Temp4),
     string:chars($|, 1, Temp5).
     
-    
+init_listener(Pid)->
+    %% application:start(cecho),    
+    input_listener(Pid).
 
 input_listener(Pid)->
-    C = cecho:getch(),
+    %% C = cecho:getch(),
+    C = io:get_chars('', 1),
     case C of
 	$q -> Pid ! {input, left},
 	      input_listener(Pid);
@@ -292,9 +296,9 @@ flip_GameState({gamestate, {Gx, Gy},
 		{bot_player, {P1x, P1y}},
 		{top_player, {P2x, P2y}}}) ->
     {gamestate, {Gx, Gy},
-		{ball, {Gx-Px, Gy-Py}, {-Dx,-Dy}},
-		{bot_player, {Gx-P1x, Gy-P1y}},
-		{top_player, {Gx-P2x, Gy-P2y}}}.
+     {ball, {Gx-Px, Gy-Py}, {-Dx,-Dy}},
+     {bot_player, {Gx-P1x, Gy-P1y}},
+     {top_player, {Gx-P2x, Gy-P2y}}}.
 
 
 stop_server() ->
