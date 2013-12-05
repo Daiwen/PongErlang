@@ -8,9 +8,6 @@
 
 start_client(Server_Node) ->
     contact_server(Server_Node),
-    %% Pid = spawn(?MODULE, client_loop, [Server_Node, unknown]),
-    %% application:start(cecho),
-    %% input_listener(Pid).
     spawn(?MODULE, init_listener, [self()]),
     client_loop(Server_Node, unknown).
     
@@ -97,7 +94,7 @@ line_str(XG, none, X) ->
     Temp2 = string:chars($H, 5, Temp1),
     Temp3 = string:chars($ , X-2, Temp2),
     string:chars($|, 1, Temp3);
-line_str(XG, XB, X) when X > XB->
+line_str(XG, XB, X) when X > XB ->
     Temp1 = string:chars($ , XG-1-(X+2),"|~n"),
     Temp2 = string:chars($H, 5, Temp1),
     Temp3 = string:chars($ , X-2-XB+1, Temp2),
@@ -113,11 +110,9 @@ line_str(XG, XB, X) ->
     string:chars($|, 1, Temp5).
     
 init_listener(Pid)->
-    %% application:start(cecho),    
     input_listener(Pid).
 
 input_listener(Pid)->
-    %% C = cecho:getch(),
     C = io:get_chars('', 1),
     case C of
 	$q -> Pid ! {input, left},
@@ -222,73 +217,57 @@ update_player({Gx, _}, {Px, Py}, right) when Px < (Gx - 4)->
 update_player(_, Pos, _) ->
     Pos.
 
-
-
-
-update_ball(_,
-	    {ball, {PBx, PBy}, {DBx, DBy}},
-	    {PBx, PBy}, _)  ->
-    {ball, {PBx+DBx, PBy-DBy}, {DBx, -DBy}};
-update_ball(_,
-	    {ball, {PBx, PBy}, {DBx, DBy}},
-	    {P1x, PBy}, _) when PBx >= P1x-2; PBx < P1x ->
-    case {PBx, DBx > -1} of
-	{0, _ } ->
-	    {ball, {PBx-DBx, PBy-DBy}, {-DBx, -DBy}};
-	{_, false} ->
-	    {ball, {PBx+DBx, PBy-DBy}, {DBx, -DBy}};
-	{_, true} ->
-	    {ball, {PBx+DBx, PBy-DBy}, {DBx-1, -DBy}}
-    end;
-update_ball({Gx, _},
-	    {ball, {PBx, PBy}, {DBx, DBy}},
-	    {P1x, PBy}, _) when PBx =< P1x+2; PBx > P1x ->
-    Max_x = Gx-1,
-    case {PBx, DBx < 1} of
-	{Max_x, _ } ->
-	    {ball, {PBx-DBx, PBy-DBy}, {-DBx, -DBy}};
-	{_, false} ->
-	    {ball, {PBx+DBx, PBy-DBy}, {DBx, -DBy}};
-	{_, true} ->
-	    {ball, {PBx+DBx, PBy-DBy}, {DBx+1, -DBy}}
-    end;
-update_ball(_,
-	    {ball, {PBx, PBy}, {DBx, DBy}},
-	    _, {PBx, PBy})  ->
-    {ball, {PBx+DBx, PBy-DBy}, {DBx, -DBy}};
-update_ball( _,
-	    {ball, {PBx, PBy}, {DBx, DBy}},
-	    _, {P2x, PBy}) when PBx >= P2x-2; PBx < P2x ->
-    case {PBx, DBx > -1} of
-	{0, _ } ->
-	    {ball, {PBx-DBx, PBy-DBy}, {-DBx, -DBy}};
-	{_, false} ->
-	    {ball, {PBx+DBx, PBy-DBy}, {DBx, -DBy}};
-	{_, true} ->
-	    {ball, {PBx+DBx, PBy-DBy}, {DBx-1, -DBy}}
-    end;
-update_ball({Gx, _},
-	    {ball, {PBx, PBy}, {DBx, DBy}},
-	    _, {P2x, PBy}) when PBx =< P2x+2; PBx > P2x ->
-    Max_x = Gx-1,
-    case {PBx, DBx < 1} of
-	{Max_x, _ } ->
-	    {ball, {PBx-DBx, PBy-DBy}, {-DBx, -DBy}};
-	{_, false} ->
-	    {ball, {PBx+DBx, PBy-DBy}, {DBx, -DBy}};
-	{_, true} ->
-	    {ball, {PBx+DBx, PBy-DBy}, {DBx+1, -DBy}}
-    end;
-update_ball(_,
-	    {ball, {0, PBy}, {DBx, DBy}},
-	    _, _) ->
-    {ball, {-DBx, PBy+DBy}, {-DBx, DBy}};
+update_ball(_, {ball, {_, 0}, _}, _, _)->
+    noball;
+update_ball({_, Gy}, {ball, {_, Py}, _}, _, _) when Py == Gy-1 ->
+    noball;
+update_ball(Grid, {ball, {PBx, PBy}, DirBall},
+	    {P1x, P1y}, _) when PBy == P1y+1 ->
+    update_ball_aux(Grid, {ball, {PBx, PBy}, DirBall},
+		    {P1x, P1y});
+update_ball(Grid, {ball, {PBx, PBy}, DirBall},
+	    _, {P2x, P2y}) when PBy == P2y-1 ->
+    update_ball_aux(Grid, {ball, {PBx, PBy}, DirBall},
+		    {P2x, P2y});
 update_ball({Gx, _},
 	    {ball, {PBx, PBy}, {DBx, DBy}},
 	    _, _) when PBx == Gx-1 ->
     {ball, {PBx-DBx, PBy+DBy}, {-DBx, DBy}};
 update_ball(_, {ball, {PBx, PBy}, {DBx, DBy}}, _, _) ->
-        {ball, {PBx+DBx, PBy+DBy}, {DBx, DBy}}.
+    {ball, {PBx+DBx, PBy+DBy}, {DBx, DBy}}.
+    
+
+update_ball_aux(_, {ball, {PBx, PBy}, {DBx, DBy}},
+		{PBx, _}) ->
+    {ball, {PBx+DBx, PBy-DBy}, {DBx, -DBy}};
+update_ball_aux(_, {ball, {PBx, PBy}, {DBx, DBy}},
+		{Px, _}) when PBx >= Px-2, PBx < Px ->
+    case PBx of
+	0 -> {ball, {1, PBy-DBy}, {1, -DBy}};
+	_ -> {ball, {PBx+DBx, PBy-DBy}, {1, -DBy}}
+    end;
+update_ball_aux({Gx, _},
+	    {ball, {PBx, PBy}, {DBx, DBy}},
+	    {Px, _}) when PBx =< Px+2, PBx > Px ->
+    Max_x = Gx-1,
+    case PBx of
+	Max_x -> {ball, {Max_x-1, PBy-DBy}, {-1, -DBy}};
+	_     -> {ball, {PBx+DBx, PBy-DBy}, {-1, -DBy}}
+    end;
+update_ball_aux({Gx, _},
+		{ball, {PBx, PBy}, {DBx, DBy}},
+		_) ->
+    Max_x = Gx-1,
+    case PBx of
+	0     -> {ball, {1, PBy+DBy}, {-DBx, DBy}};
+	Max_x -> {ball, {Max_x-1, PBy+DBy}, {-DBx, DBy}};
+	_     -> {ball, {PBx+DBx, PBy+DBy}, {DBx, DBy}}
+    end.
+	    
+	    
+
+	    
+    
 
 
 flip_GameState({gamestate, {Gx, Gy},
