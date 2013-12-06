@@ -222,11 +222,11 @@ update_ball(_, {ball, {_, 0}, _}, _, _)->
 update_ball({_, Gy}, {ball, {_, Py}, _}, _, _) when Py == Gy-1 ->
     noball;
 update_ball(Grid, {ball, {PBx, PBy}, DirBall},
-	    {P1x, P1y}, _) when PBy == P1y+1 ->
+	    {P1x, P1y}, _) when PBy == P1y-1 ->
     update_ball_aux(Grid, {ball, {PBx, PBy}, DirBall},
 		    {P1x, P1y});
 update_ball(Grid, {ball, {PBx, PBy}, DirBall},
-	    _, {P2x, P2y}) when PBy == P2y-1 ->
+	    _, {P2x, P2y}) when PBy == P2y+1 ->
     update_ball_aux(Grid, {ball, {PBx, PBy}, DirBall},
 		    {P2x, P2y});
 update_ball({Gx, _},
@@ -263,11 +263,6 @@ update_ball_aux({Gx, _},
 	Max_x -> {ball, {Max_x-1, PBy+DBy}, {-DBx, DBy}};
 	_     -> {ball, {PBx+DBx, PBy+DBy}, {DBx, DBy}}
     end.
-	    
-	    
-
-	    
-    
 
 
 flip_GameState({gamestate, {Gx, Gy},
