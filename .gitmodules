@@ -1,3 +1,0 @@
-[submodule "dep/cecho"]
-	path = dep/cecho
-	url = git://github.com/mazenharake/cecho.git

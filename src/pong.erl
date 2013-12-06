@@ -278,8 +278,8 @@ update_ball_aux({Gx, _},
 
 flip_GameState({gamestate, {Gx, Gy},
 		{ball, {Px, Py}, {Dx, Dy}},
-		{bot_player, {P1x, P1y}},
-		{top_player, {P2x, P2y}}}) ->
+		{bot_player, {P1x, _}},
+		{top_player, {P2x, _}}}) ->
     {gamestate, {Gx, Gy},
      {ball, {Gx-Px, (Gy-Py)-1}, {-Dx,-Dy}},
      {bot_player, {Gx-P1x, Gy-1}},
