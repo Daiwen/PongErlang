@@ -27,6 +27,7 @@ client_loop(Server_Node, Key) ->
     receive
 	request          -> {pong_server, Server_Node} ! {self(), Key},
 			      client_loop(Server_Node, unknown);
+	{frame, quit}    -> ok;
 	{frame, {gamestate, Field_Size,
 		 {ball, Ball_Pos, _},
 		 {bot_player, {My_Pos, _}},
@@ -49,27 +50,29 @@ draw_frame({XG,YG}, {XB,YB}, X1, X2) ->
 pong_str({XG,YG}, {XB,YB}, X1, X2) ->
     V_line_temp = string:chars($_,XG," ~n"),
     V_line = string:chars($ ,1,V_line_temp),
-    H_line = pong_str_aux({XG,YG}, {XB,YB}, X1, X2, YG, ""),
+    H_line = pong_str_aux({XG,YG}, {XB,YB}, X1, X2, YG-1, ""),
     Temp = string:concat(V_line, H_line),
     string:concat(Temp,V_line).
 
-pong_str_aux(_, _, _, _, 0, Acc_Str) ->
+pong_str_aux(_, _, _, _, -1, Acc_Str) ->
     Acc_Str;
-pong_str_aux({XG,YG}, {XB, 1}, X1, X2, 1, Acc_Str) ->
+pong_str_aux({XG,YG}, {XB, 0}, X1, X2, 0, Acc_Str) ->
     Temp_Str = line_str(XG, XB, X2),
-    pong_str_aux({XG,YG}, {XB, 1}, X1, X2, 0,
+    pong_str_aux({XG,YG}, {XB, 0}, X1, X2, -1,
 		 string:concat(Temp_Str,Acc_Str));
-pong_str_aux({XG,YG}, {XB, YG}, X1, X2, YG, Acc_Str) ->
+pong_str_aux({XG,YG}, {XB, YC}, X1, X2, YC, Acc_Str)
+  when YG-1 == YC ->
     Temp_Str = line_str(XG, XB, X1),
-    pong_str_aux({XG,YG}, {XB, YG}, X1, X2, YG-1,
+    pong_str_aux({XG,YG}, {XB, YC}, X1, X2, YC-1,
 		 string:concat(Temp_Str,Acc_Str));
-pong_str_aux({XG,YG}, Ball, X1, X2, YG, Acc_Str) ->
-    Temp_Str = line_str(XG, none, X1),
-    pong_str_aux({XG,YG}, Ball, X1, X2, YG-1,
-		 string:concat(Temp_Str,Acc_Str));
-pong_str_aux({XG,YG}, Ball, X1, X2, 1, Acc_Str) ->
+pong_str_aux({XG,YG}, Ball, X1, X2, 0, Acc_Str) ->
     Temp_Str = line_str(XG, none, X2),
-    pong_str_aux({XG,YG}, Ball, X1, X2, 0,
+    pong_str_aux({XG,YG}, Ball, X1, X2, -1,
+		 string:concat(Temp_Str,Acc_Str));
+pong_str_aux({XG,YG}, Ball, X1, X2, YC, Acc_Str)
+  when YG-1 == YC ->
+    Temp_Str = line_str(XG, none, X1),
+    pong_str_aux({XG,YG}, Ball, X1, X2, YC-1,
 		 string:concat(Temp_Str,Acc_Str));
 pong_str_aux({XG,YG}, {XB,YC}, X1, X2, YC, Acc_Str) ->
     Temp_Str = line_str(XG, XB, none),
@@ -170,10 +173,15 @@ game_loop(GameState, Pid1, Pid2) ->
     Pid2 ! request,
     {Key1, Key2} = receive_inputs(Pid1, Pid2, none, none),
     NGameState = update_GameState(GameState, Key1, Key2),
-    Pid1 ! {frame, NGameState},
-    Pid2 ! {frame, flip_GameState(NGameState)},
-    timer:sleep(500),
-    game_loop(NGameState, Pid1, Pid2).
+    case NGameState of
+	nogame -> Pid1 ! {frame, quit},
+		  Pid2 ! {frame, quit},
+		  ok;
+	_      -> Pid1 ! {frame, NGameState},
+		  Pid2 ! {frame, flip_GameState(NGameState)},
+		  timer:sleep(500),
+		  game_loop(NGameState, Pid1, Pid2)
+    end.
 
 
 receive_inputs(Pid1, Pid2, none, none) ->
@@ -205,9 +213,12 @@ update_GameState({gamestate, Field_Size,
     NP1_Pos = update_player(Field_Size, P1_Pos, Key1),
     NP2_Pos = update_player(Field_Size, P2_Pos, Key2),
     NBall   = update_ball(Field_Size, Ball, NP1_Pos, NP2_Pos),
-    {gamestate, Field_Size, NBall,
-     {bot_player, NP1_Pos},
-     {top_player, NP2_Pos}}.
+    case NBall of
+	noball -> nogame;
+	_      -> {gamestate, Field_Size, NBall,
+		   {bot_player, NP1_Pos},
+		   {top_player, NP2_Pos}}
+    end.
 
 
 update_player({_, _}, {Px, Py}, left) when Px > 3->
@@ -240,19 +251,19 @@ update_ball(_, {ball, {PBx, PBy}, {DBx, DBy}}, _, _) ->
 update_ball_aux(_, {ball, {PBx, PBy}, {DBx, DBy}},
 		{PBx, _}) ->
     {ball, {PBx+DBx, PBy-DBy}, {DBx, -DBy}};
-update_ball_aux(_, {ball, {PBx, PBy}, {DBx, DBy}},
+update_ball_aux(_, {ball, {PBx, PBy}, {_, DBy}},
 		{Px, _}) when PBx >= Px-2, PBx < Px ->
     case PBx of
 	0 -> {ball, {1, PBy-DBy}, {1, -DBy}};
-	_ -> {ball, {PBx+DBx, PBy-DBy}, {1, -DBy}}
+	_ -> {ball, {PBx+1, PBy-DBy}, {1, -DBy}}
     end;
 update_ball_aux({Gx, _},
-	    {ball, {PBx, PBy}, {DBx, DBy}},
+	    {ball, {PBx, PBy}, {_, DBy}},
 	    {Px, _}) when PBx =< Px+2, PBx > Px ->
     Max_x = Gx-1,
     case PBx of
 	Max_x -> {ball, {Max_x-1, PBy-DBy}, {-1, -DBy}};
-	_     -> {ball, {PBx+DBx, PBy-DBy}, {-1, -DBy}}
+	_     -> {ball, {PBx-1, PBy-DBy}, {-1, -DBy}}
     end;
 update_ball_aux({Gx, _},
 		{ball, {PBx, PBy}, {DBx, DBy}},
@@ -270,9 +281,9 @@ flip_GameState({gamestate, {Gx, Gy},
 		{bot_player, {P1x, P1y}},
 		{top_player, {P2x, P2y}}}) ->
     {gamestate, {Gx, Gy},
-     {ball, {Gx-Px, Gy-Py}, {-Dx,-Dy}},
-     {bot_player, {Gx-P1x, Gy-P1y}},
-     {top_player, {Gx-P2x, Gy-P2y}}}.
+     {ball, {Gx-Px, (Gy-Py)-1}, {-Dx,-Dy}},
+     {bot_player, {Gx-P1x, Gy-1}},
+     {top_player, {Gx-P2x, 0}}}.
 
 
 stop_server() ->
