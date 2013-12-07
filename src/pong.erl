@@ -31,15 +31,32 @@ client_loop(Server_Node, Key) ->
 		 {ball, Ball_Pos, _},
 		 {bot_player, {My_Pos, _}},
 		 {top_player, {Foe_Pos, _}}}} -> draw_frame(Field_Size,
-						       Ball_Pos,
-						       My_Pos,
-						       Foe_Pos),
-					    client_loop(Server_Node, Key);
+							    Ball_Pos,
+							    My_Pos,
+							    Foe_Pos),
+						 client_loop(Server_Node, Key);
 	{nodedown, _}   -> {error, nodedown};
+
 	{input, quit}   -> ok;
 	{input, Key}    -> client_loop(Server_Node, Key)
     end.
 
+init_listener(Pid)->
+    A = wx:new(),
+    wxEvtHandler:connect(A, key_down),
+    input_listener(A, Pid).
+
+input_listener(KH, Pid)->
+    C = wxKeyEvent:getKeyCode(key_down),
+    case C of
+	$q -> Pid ! {input, left},
+	      input_listener(KH, Pid);
+	$d -> Pid ! {input, right},
+	      input_listener(KH, Pid);
+	27 -> Pid ! {input, quit},
+	      wx:destroy();
+	_  -> input_listener(KH, Pid)
+    end.
 
 
 draw_frame({XG,YG}, {XB,YB}, X1, X2) ->
@@ -110,21 +127,7 @@ line_str(XG, XB, X) ->
     Temp4 = string:chars($H, 5, Temp3),
     Temp5 = string:chars($ , XB, Temp4),
     string:chars($|, 1, Temp5).
-    
-init_listener(Pid)->
-    input_listener(Pid).
-
-input_listener(Pid)->
-    C = io:get_chars('', 1),
-    case C of
-	$q -> Pid ! {input, left},
-	      input_listener(Pid);
-	$d -> Pid ! {input, right},
-	      input_listener(Pid);
-	$p -> Pid ! {input, quit},
-	      application:stop(cecho);
-	_  -> input_listener(Pid)
-    end.
+ 
 
 start_server(Config_File) ->
     register(pong_server, spawn(?MODULE, init_server, [Config_File])).
@@ -144,7 +147,7 @@ read_config(Config_File) ->
     {ok, [Gx, Gy]} = io:fread(File_Device, '', "~d ~d"),
     {gamestate,
      {Gx, Gy},
-     {ball, {Gx div 2, Gy div 2}, {0, 1}},
+     {ball, {(Gx div 2)+1, Gy div 2}, {0, 1}},
      {bot_player, {Gx div 2, Gy-1}},
      {top_player, {Gx div 2, 0}}}.    
 
@@ -185,8 +188,8 @@ game_loop(GameState, Pid1, Pid2) ->
 
 receive_inputs(Pid1, Pid2, none, none) ->
     receive
-	{Pid1, Key1} -> receive_inputs(Pid1, Pid2, Key1, none);
-	{Pid2, left} -> receive_inputs(Pid1, Pid2, none, right);
+	{Pid1, Key1}  -> receive_inputs(Pid1, Pid2, Key1, none);
+	{Pid2, left}  -> receive_inputs(Pid1, Pid2, none, right);
 	{Pid2, right} -> receive_inputs(Pid1, Pid2, none, left)
     after
 	1000 -> exit(timeout)
@@ -243,6 +246,10 @@ update_ball({Gx, _},
 	    {ball, {PBx, PBy}, {DBx, DBy}},
 	    _, _) when PBx == Gx-1 ->
     {ball, {PBx-DBx, PBy+DBy}, {-DBx, DBy}};
+update_ball(_,
+	    {ball, {0, PBy}, {DBx, DBy}},
+	    _, _) ->
+    {ball, {1 , PBy+DBy}, {-DBx, DBy}};
 update_ball(_, {ball, {PBx, PBy}, {DBx, DBy}}, _, _) ->
     {ball, {PBx+DBx, PBy+DBy}, {DBx, DBy}}.
     
@@ -250,19 +257,19 @@ update_ball(_, {ball, {PBx, PBy}, {DBx, DBy}}, _, _) ->
 update_ball_aux(_, {ball, {PBx, PBy}, {DBx, DBy}},
 		{PBx, _}) ->
     {ball, {PBx+DBx, PBy-DBy}, {DBx, -DBy}};
-update_ball_aux(_, {ball, {PBx, PBy}, {_, DBy}},
-		{Px, _}) when PBx >= Px-2, PBx < Px ->
+update_ball_aux(_, {ball, {PBx, PBy}, {DBx, DBy}},
+		{Px, _}) when PBx+DBx >= Px-2, PBx < Px ->
     case PBx of
 	0 -> {ball, {1, PBy-DBy}, {1, -DBy}};
-	_ -> {ball, {PBx+1, PBy-DBy}, {1, -DBy}}
+	_ -> {ball, {PBx-1, PBy-DBy}, {-1, -DBy}}
     end;
 update_ball_aux({Gx, _},
-	    {ball, {PBx, PBy}, {_, DBy}},
-	    {Px, _}) when PBx =< Px+2, PBx > Px ->
+	    {ball, {PBx, PBy}, {DBx, DBy}},
+	    {Px, _}) when PBx+DBx =< Px+2, PBx > Px ->
     Max_x = Gx-1,
     case PBx of
 	Max_x -> {ball, {Max_x-1, PBy-DBy}, {-1, -DBy}};
-	_     -> {ball, {PBx-1, PBy-DBy}, {-1, -DBy}}
+	_     -> {ball, {PBx+1, PBy-DBy}, {1, -DBy}}
     end;
 update_ball_aux({Gx, _},
 		{ball, {PBx, PBy}, {DBx, DBy}},
@@ -280,9 +287,9 @@ flip_GameState({gamestate, {Gx, Gy},
 		{bot_player, {P1x, _}},
 		{top_player, {P2x, _}}}) ->
     {gamestate, {Gx, Gy},
-     {ball, {Gx-Px, (Gy-Py)-1}, {-Dx,-Dy}},
-     {bot_player, {Gx-P1x, Gy-1}},
-     {top_player, {Gx-P2x, 0}}}.
+     {ball, {Gx-1-Px, Gy-1-Py}, {-Dx,-Dy}},
+     {bot_player, {Gx-1-P1x, Gy-1}},
+     {top_player, {Gx-1-P2x, 0}}}.
 
 
 stop_server() ->
