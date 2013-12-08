@@ -2,12 +2,11 @@
 
 -export([start_client/1,start_server/1,stop_server/0]).
 
--export([client_loop/2, init_server/1, init_listener/1]).
+-export([client_loop/2, init_server/1]).
 
 
 start_client(Server_Node) ->
     contact_server(Server_Node),
-    spawn(?MODULE, init_listener, [self()]),
     client_loop(Server_Node, unknown).
     
 
@@ -41,22 +40,6 @@ client_loop(Server_Node, Key) ->
 	{input, Key}    -> client_loop(Server_Node, Key)
     end.
 
-init_listener(Pid)->
-    A = wx:new(),
-    wxEvtHandler:connect(A, key_down),
-    input_listener(A, Pid).
-
-input_listener(KH, Pid)->
-    C = wxKeyEvent:getKeyCode(key_down),
-    case C of
-	$q -> Pid ! {input, left},
-	      input_listener(KH, Pid);
-	$d -> Pid ! {input, right},
-	      input_listener(KH, Pid);
-	27 -> Pid ! {input, quit},
-	      wx:destroy();
-	_  -> input_listener(KH, Pid)
-    end.
 
 
 draw_frame({XG,YG}, {XB,YB}, X1, X2) ->
