@@ -1,43 +1,74 @@
 -module(pong_client).
+-behaviour(gen_server).
 
--export([start_client/1]).
+-export([start/1]).
 
--export([client_loop/2]).
+-export([init/1, handle_call/3, handle_cast/2, handle_info/2,
+         code_change/3, terminate/2]).
 
-start_client(Server_Node) ->
-    contact_server(Server_Node),
-    client_loop(Server_Node, unknown).
-    
+
+%%Gen server
+init([Server_Node]) ->
+    contact_server(Server_Node).
+
 
 contact_server(Server_Node)->
     {pong_server, Server_Node} ! {register_player, self()},
+    io:format("Registering to the pong server ~n"),
     monitor_node(Server_Node, true),
     receive
-	gamestart -> ok
+	gamestart -> {ok, {Server_Node, unknown}}
     after 
-	60000 ->
-	    exit(timeout)
+	60000     -> {stop, timeout}
     end.
 
 
-client_loop(Server_Node, Key) ->
-    receive
-	request          -> {pong_server, Server_Node} ! {self(), Key},
-			      client_loop(Server_Node, unknown);
-	{frame, quit}    -> ok;
-	{frame, {gamestate, Field_Size,
-		 {ball, Ball_Pos, _},
-		 {bot_player, {My_Pos, _}},
-		 {top_player, {Foe_Pos, _}}}} -> draw_frame(Field_Size,
-							    Ball_Pos,
-							    My_Pos,
-							    Foe_Pos),
-						 client_loop(Server_Node, Key);
-	{nodedown, _}   -> {error, nodedown};
 
-	{input, quit}   -> ok;
-	{input, Key}    -> client_loop(Server_Node, Key)
-    end.
+
+handle_call(request, _From, {Server_Node, Key}) ->
+    {reply, {self(), Key}, {Server_Node, unknown}};
+handle_call(stop, _From, State) ->
+    {stop, normal, ok, State};
+handle_call(_Msg, _From, State) ->
+    {noreply, State}.
+
+handle_cast({frame, {gamestate, Field_Size,
+		     {ball, Ball_Pos, _Ball_Dir},
+		     {bot_player, {My_Posx , _My_Posy}},
+		     {top_player, {Foe_Posx, _Foe_Posy}}}}, State) ->
+    draw_frame(Field_Size, Ball_Pos, My_Posx, Foe_Posx),
+    {noreply, State};
+handle_cast({input, stop}, {Server_Node, Key}) ->
+    Server_Node ! {self(), stop},
+    {stop, normal, {Server_Node, Key}};
+handle_cast({input, Key}, {Server_Node, _Old_Key}) ->
+    {noreply, {Server_Node, Key}};
+handle_cast(_Msg, State) ->
+    {noreply, State}.
+
+
+handle_info({nodedown, _}, State) -> 
+    {stop, nodedown, State};
+handle_info(Msg, State) -> 
+    io:format("Unknown message: ~p~n", [Msg]),
+    {noreply, State}.
+
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
+
+terminate(_Reason, _State) ->
+    ok.
+
+
+%%%%
+
+
+
+start(Server_Node) ->
+    gen_server:start(?MODULE, [Server_Node], []).
+    
+
+
 
 
 

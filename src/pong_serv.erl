@@ -1,6 +1,6 @@
 -module(pong_serv).
 
--export([start_server/1,stop_server/0]).
+-export([start_server/1, stop_server/0]).
 
 -export([init_server/1]).
 
@@ -12,8 +12,8 @@ start_server(Config_File) ->
 init_server(Config_File)->
     GameState = read_config(Config_File),
     {Pid1, Pid2} = wait_players(),
-    Pid1 ! {frame, GameState},
-    Pid2 ! {frame, flip_GameState(GameState)},
+    gen_server:cast(Pid1, {frame, GameState}),
+    gen_server:cast(Pid2, {frame, flip_GameState(GameState)}),
     game_loop(GameState, Pid1, Pid2).
 
 
@@ -47,41 +47,20 @@ player_connection() ->
 
 
 game_loop(GameState, Pid1, Pid2) ->
-    Pid1 ! request,
-    Pid2 ! request,
-    {Key1, Key2} = receive_inputs(Pid1, Pid2, none, none),
+    %% TODO use multicall
+    Key1 = gen_server:call(Pid1, request),
+    Key2 = gen_server:call(Pid2, request),
     NGameState = update_GameState(GameState, Key1, Key2),
     case NGameState of
-	nogame -> Pid1 ! {frame, quit},
-		  Pid2 ! {frame, quit},
-		  ok;
-	_      -> Pid1 ! {frame, NGameState},
-		  Pid2 ! {frame, flip_GameState(NGameState)},
+	nogame -> gen_server:call(Pid1, stop),
+		  gen_server:call(Pid2, stop),
+		  ok;	
+	_      -> gen_server:cast(Pid1, {frame, NGameState}),
+		  gen_server:cast(Pid2, {frame, flip_GameState(NGameState)}),
 		  timer:sleep(500),
 		  game_loop(NGameState, Pid1, Pid2)
     end.
 
-
-receive_inputs(Pid1, Pid2, none, none) ->
-    receive
-	{Pid1, Key1}  -> receive_inputs(Pid1, Pid2, Key1, none);
-	{Pid2, left}  -> receive_inputs(Pid1, Pid2, none, right);
-	{Pid2, right} -> receive_inputs(Pid1, Pid2, none, left)
-    after
-	1000 -> exit(timeout)
-    end;
-receive_inputs(_, Pid2, Key1, none) ->
-    receive
-	{Pid2, Key2} -> {Key1, Key2}
-    after
-	1000 -> exit(timeout)
-    end;
-receive_inputs(Pid1, _, none, Key2) ->
-    receive
-	{Pid1, Key1} -> {Key1, Key2}
-    after
-	1000 -> exit(timeout)
-    end.
 
 
 update_GameState({gamestate, Field_Size,
