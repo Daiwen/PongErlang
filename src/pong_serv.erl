@@ -1,21 +1,61 @@
 -module(pong_serv).
+-behaviour(gen_fsm).
 
--export([start_server/1, stop_server/0]).
-
--export([init_server/1]).
-
-
-start_server(Config_File) ->
-    register(pong_server, spawn(?MODULE, init_server, [Config_File])).
+-export([start/1, stop/0]).
 
 
-init_server(Config_File)->
+-export([init/1, update/2, update/3, handle_event/3,
+	 handle_sync_event/4, handle_info/3, terminate/3,
+	 code_change/4]).
+
+
+%%Gen_fsm
+
+init(Config_File)->
     GameState = read_config(Config_File),
     {Pid1, Pid2} = wait_players(),
     gen_server:cast(Pid1, {frame, GameState}),
     gen_server:cast(Pid2, {frame, flip_GameState(GameState)}),
+    gen_fsm:start_timer(500, next_frame),
+    {ok, update, {GameState, {Pid1, Pid2}}}.
+
+update(stopserver, {GameState, {Pid1, Pid2}}) ->
+    gen_server:cast(Pid1, stop),
+    gen_server:cast(Pid2, stop),
+    {stop, stopserver, {GameState, {Pid1, Pid2}}};
+update({timeout, _From, next_frame}, {GameState, {Pid1, Pid2}}) ->
     game_loop(GameState, Pid1, Pid2).
 
+update(stopserver, _From, {GameState, {Pid1, Pid2}}) ->
+    gen_server:cast(Pid1, stop),
+    gen_server:cast(Pid2, stop),
+    {stop, stopserver, {GameState, {Pid1, Pid2}}};
+update({timeout, _From, next_frame}, _From, {GameState, {Pid1, Pid2}}) ->
+    game_loop(GameState, Pid1, Pid2).
+
+handle_event(_Event, _StateName, StateData) ->
+    {stop, unused, StateData}.
+    
+handle_sync_event(_Event, _From, _StateName, StateData) ->
+    {stop, unused, unused, StateData}.
+
+handle_info(_Info, _StateName, StateData) ->
+    {stop, unused, StateData}.
+
+terminate(gamelost, _StateName, _StateData) ->
+    ok;
+terminate(stopserver, _StateName, _StateData) ->
+    ok.
+
+
+    
+code_change(_OldVsn, StateName, Data, _Extra) ->
+    {ok, StateName, Data}.
+
+%%%%
+
+start(Config_File) ->
+    gen_fsm:start({local, pong_server}, ?MODULE, [Config_File], []).
 
 
 read_config(Config_File) ->
@@ -50,15 +90,16 @@ game_loop(GameState, Pid1, Pid2) ->
     %% TODO use multicall
     Key1 = gen_server:call(Pid1, request),
     Key2 = gen_server:call(Pid2, request),
+
     NGameState = update_GameState(GameState, Key1, Key2),
     case NGameState of
 	nogame -> gen_server:call(Pid1, stop),
 		  gen_server:call(Pid2, stop),
-		  ok;	
+		  {stop, gamelost, {NGameState, {Pid1, Pid2}}};	
 	_      -> gen_server:cast(Pid1, {frame, NGameState}),
 		  gen_server:cast(Pid2, {frame, flip_GameState(NGameState)}),
-		  timer:sleep(500),
-		  game_loop(NGameState, Pid1, Pid2)
+		  gen_fsm:start_timer(500, next_frame),
+		  {next_state, update, {NGameState, {Pid1, Pid2}}, hibernate}
     end.
 
 
@@ -147,8 +188,8 @@ flip_GameState({gamestate, {Gx, Gy},
      {top_player, {Gx-1-P2x, 0}}}.
 
 
-stop_server() ->
-    serverpong ! stop.
+stop() ->
+    gen_fsm:send_event(pong_server, stopserver).
 
 
  

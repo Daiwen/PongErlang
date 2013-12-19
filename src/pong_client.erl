@@ -27,8 +27,6 @@ contact_server(Server_Node)->
 
 handle_call(request, _From, {Server_Node, Key}) ->
     {reply, {self(), Key}, {Server_Node, unknown}};
-handle_call(stop, _From, State) ->
-    {stop, normal, ok, State};
 handle_call(_Msg, _From, State) ->
     {noreply, State}.
 
@@ -43,6 +41,8 @@ handle_cast({input, stop}, {Server_Node, Key}) ->
     {stop, normal, {Server_Node, Key}};
 handle_cast({input, Key}, {Server_Node, _Old_Key}) ->
     {noreply, {Server_Node, Key}};
+handle_cast(stop, State) ->
+    {stop, normal, ok, State};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
